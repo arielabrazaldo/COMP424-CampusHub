@@ -1,34 +1,49 @@
-from flask import Flask, render_template
+# app.py
+
+from flask import Flask, render_template, url_for, flash, redirect
 from flask_sqlalchemy import SQLAlchemy
 
-# Create the Flask application instance
-app = Flask(__name__)
+# Initialize db object globally but without the app yet
+db = SQLAlchemy() 
 
-# This will tell Flask-SQLAlchemy where to store the database file.
-# 'sqlite:///site.db' means a file named 'site.db' will be created 
-# in the root of your project directory.
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False # Silcence a deprecation warning
-db = SQLAlchemy(app) # creates the database object
+# Function to create and configure the app
+def create_app():
+    app = Flask(__name__)
 
-# Model is a Python class that will represent table in database
-# Create the user model/table
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(20), unique=True, nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
+    # Configuration for Flask-WTF Secret Key
+    app.config['SECRET_KEY'] = 'your_super_secret_key_change_me' 
 
-    # string password just to get started, will implement hashing later!
-    password = db.Column(db.String(60), nullable=False)
+    # Configuration for SQLAlchemy
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False 
 
-    def __repr__(self):
-        return f"User('{self.username}', '{self.email}')"
+    # Initialize the database with the app
+    db.init_app(app) 
 
-# Define the route for the home page ('/')
-@app.route('/')
-def hello_world():
-    return render_template('index.html')
+    # IMPORT ROUTES AND FORMS HERE TO AVOID CIRCULAR IMPORTS
+    from forms import RegistrationForm 
+    from models import User
 
-# This runs the application
+    # --- Routes ---
+    
+    @app.route("/")
+    @app.route("/home")
+    def hello_world():
+        # Flash messages are defined here to ensure they are available
+        return render_template('index.html') 
+
+    @app.route("/register", methods=['GET', 'POST'])
+    def register():
+        form = RegistrationForm()
+        if form.validate_on_submit():
+            # Hashing and saving user logic will go here
+            flash(f'Account created for {form.username.data}!', 'success')
+            return redirect(url_for('hello_world')) 
+        return render_template('register.html', title='Register', form=form)
+
+    return app
+
+# If running directly, run the create_app function
 if __name__ == '__main__':
+    app = create_app()
     app.run(debug=True)
