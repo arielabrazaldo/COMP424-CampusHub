@@ -1,0 +1,9 @@
+# Python virtual environment
+venv/
+
+# Flask instance folder (contains the database)
+instance/
+
+# Database files
+*.db
+*.sqlite
