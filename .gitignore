@@ -1,7 +1,10 @@
-# Python virtual environment
+# Python virtual environment and cache files
 venv/
+__pycache__/
+*.pyc
+*.pyo
 
-# Flask instance folder (contains the database)
+# Flask instance folder (contains the local database)
 instance/
 
 # Database files
