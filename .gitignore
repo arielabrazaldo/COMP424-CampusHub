@@ -10,3 +10,7 @@ instance/
 # Database files
 *.db
 *.sqlite
+
+# Local Environment variables
+# CRUCIAL FOR HIDING CLIENT ID AND CLIENT SECRET
+.env 
