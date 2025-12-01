@@ -18,7 +18,7 @@ Log out and have their session properly invalidated.
 
 Interact with a web API that enforces modern web security practices.
 
-1. Login with Google
+<h3>1. Login with Google</h3>
 User clicks “Login with Google”.
 
 The app redirects them to Google’s login page using the OAuth 2.0 Authorization Code Flow.
@@ -29,7 +29,7 @@ The app exchanges that code for an ID token (contains verified user identity).
 
 The app validates the token, creates a secure session, and stores minimal user data in it
 
-2. Session & Cookie Handling
+<h3>2. Session & Cookie Handling</h3>
 The app issues a session cookie like:
 
 Set-Cookie: campushub.sid=<session-token>; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=1800
@@ -43,7 +43,7 @@ SameSite=Lax: Protects against CSRF (Cross-Site Request Forgery).
 
 Short-lived (30 min) and refreshed on activity.
 
-3. Creating and Managing Notes
+<h3>3. Creating and Managing Notes</h3>
 Authenticated users can:
 
 GET /api/notes → view their own notes
@@ -58,7 +58,7 @@ Each note is stored with an owner ID linked to the user’s Google identity.
 
 This enforces authorization and ownership checks — you can’t view or edit another person’s notes.
 
-4. CSRF (Cross-Site Request Forgery) Protection
+<h3>4. CSRF (Cross-Site Request Forgery) Protection</h3>
 All write actions (POST, PUT, DELETE) require a CSRF token.
 
 The app issues a token via GET /csrf.
@@ -67,7 +67,7 @@ The frontend includes this token in headers (x-csrf-token) with every modifying 
 
 Without it, the server rejects the request with 403 Invalid CSRF token.
 
-5. Logout and Session Destruction
+<h3>5. Logout and Session Destruction</h3>
 When the user clicks “Logout,” the server:
 
 Deletes the session from memory.
@@ -76,7 +76,7 @@ Sends an expired cookie to the browser.
 
 After logout, protected endpoints like /api/notes or /me will return 401 Unauthorized.
 
-Technical Design Highlights
+<h3>Technical Design Highlights</h3>
 Layer	Security Mechanism
 Authentication	OAuth 2.0 / OIDC via Google
 Session Management	Secure cookies, rotation, timeout
@@ -88,7 +88,7 @@ Data Validation	Input length limits, sanitization
 Logging	Track login/logout and CRUD actions
  
 
-Example Use Case Scenario
+<h3>Example Use Case Scenario</h3>
 Alice logs into CampusHub with her Google account.
 
 She creates three notes for her “Network Security” class.
