@@ -148,13 +148,23 @@ def create_app():
                 flash('Login Unsuccessful. Please check email and password.', 'danger')
         return render_template('login.html', title='Login', form=form)
     
-    # --------------- Google OAuth Route -------------------------------------------------------- 
+    # --------------- Google OAuth Route ----------------------------------------------------------
     @app.route("/logout")
     def logout():
         # Clears the session cookie, effectively logging the user out
         logout_user() 
         flash("You have been logged out.", 'info')
         return redirect(url_for('hello_world'))
+    
+    @app.route("/timeout_logout")
+    @login_required
+    def timeout_logout():
+        """Logs out the user and shows a message specific to inactivity."""
+        # Note: 'logout_user' and 'flash' should be imported globally or inside the function if needed
+        from flask_login import logout_user # Ensure this is imported if not global
+        logout_user() 
+        flash("You were logged out due to 30 minutes of inactivity.", 'warning')
+        return redirect(url_for('login'))
     
     @app.route('/login/google')
     def login_google():
