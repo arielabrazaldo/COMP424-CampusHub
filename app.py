@@ -43,6 +43,21 @@ def create_app():
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False 
 
+    # --- Secure Session & Cookie Configuration -------------------------------
+    # HttpOnly (Not accessible to JavaScript)
+    app.config['SESSION_COOKIE_HTTPONLY'] = True
+
+    # Secure (Only sent over HTTPS)
+    app.config['SESSION_COOKIE_SECURE'] = True
+
+    # SameSite=Lax (Protects against CSRF)
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
+    # short-lived (30 minutes)
+    # Max-Age is in seconds (1800 seconds = 30 minutes)
+    app.config['PERMANENT_SESSION_LIFETIME'] = 1800
+    # -------------------------------------------------------------------------
+
     # Initialize the database with the app
     db.init_app(app) 
 
@@ -84,8 +99,7 @@ def create_app():
     def load_user(user_id):
         return User.query.get(int(user_id))
 
-    # --- Routes ---
-    
+    # ------------------------------ Routes -----------------------------------------------------
     @app.route("/")
     @app.route("/home")
     def hello_world():
@@ -122,6 +136,10 @@ def create_app():
 
             # Check if user exists AND password is correct
             if user and bcrypt.check_password_hash(user.password, form.password.data):
+                # session object
+                from flask import session
+                session.permanent = True # enforces 30-minute session expiry from configuration
+
                 from flask_login import login_user # Import here to avoid conflict
                 login_user(user, remember=form.remember.data)
                 flash('Login successful!', 'success')
@@ -130,12 +148,23 @@ def create_app():
                 flash('Login Unsuccessful. Please check email and password.', 'danger')
         return render_template('login.html', title='Login', form=form)
     
+    # --------------- Google OAuth Route ----------------------------------------------------------
     @app.route("/logout")
     def logout():
         # Clears the session cookie, effectively logging the user out
         logout_user() 
         flash("You have been logged out.", 'info')
         return redirect(url_for('hello_world'))
+    
+    @app.route("/timeout_logout")
+    @login_required
+    def timeout_logout():
+        """Logs out the user and shows a message specific to inactivity."""
+        # Note: 'logout_user' and 'flash' should be imported globally or inside the function if needed
+        from flask_login import logout_user # Ensure this is imported if not global
+        logout_user() 
+        flash("You were logged out due to 30 minutes of inactivity.", 'warning')
+        return redirect(url_for('login'))
     
     @app.route('/login/google')
     def login_google():
@@ -147,12 +176,13 @@ def create_app():
 
     @app.route('/google/auth')
     def authorize_google():
+        # ---------------------- Token processing and user creation -------------------------------
         """Handles the callback from Google, authenticates the user, and logs them in."""
         google = oauth.create_client('google')
         token = google.authorize_access_token()
         user_info = google.get('userinfo').json() # Fetch user data (email, name)
 
-        # --- Database and Login Logic ---
+        # --- Database and Login Logic --------------
         user = User.query.filter_by(email=user_info['email']).first()
     
         if user is None:
@@ -162,13 +192,20 @@ def create_app():
                         password='') # Password is a placeholder for OAuth users
             db.session.add(user)
             db.session.commit()
+        # -------------------------------------------
     
         # Log the user into the Flask session
         from flask_login import login_user
+        from flask import session
+
+        # enforce 30-minute session expiry from configuration
+        session.permanent = True
+
         login_user(user)
     
         flash(f'Successfully logged in with Google as {user.username}!', 'success')
         return redirect(url_for('hello_world'))
+        # -------------------------------------------------------------------------------------------
 
     return app
 

@@ -14,7 +14,7 @@
                 <a href="{{ url_for('register') }}">Register</a>
             {% else %}
             <a href="{{ url_for('hello_world') }}">Home</a>
-                <a href="#">Profile (Coming Soon)</a>
+                <a href="#">Profile</a>
                 <a href="{{ url_for('logout') }}">Logout</a>
             {% endif %}
         </nav>
@@ -36,5 +36,9 @@
             <p>This is the starting page for your campus management system.</p>
         {% endblock %}
     </main>
+
+    {% if current_user.is_authenticated %}
+    <script src="{{ url_for('static', filename='js/timeout.js') }}"></script>
+    {% endif %}
 </body>
 </html>
