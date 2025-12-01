@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from flask import Flask, render_template, url_for, flash, redirect
+from flask import Flask, render_template, url_for, flash, redirect, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from flask_login import LoginManager, logout_user, login_required
@@ -148,6 +148,186 @@ def create_app():
                 flash('Login Unsuccessful. Please check email and password.', 'danger')
         return render_template('login.html', title='Login', form=form)
     
+    # --------------------- Notes API Routes -------------------------------------------------------
+    @app.route("/api/notes", methods=['GET', 'POST'])
+    @login_required
+    def api_notes():
+        from models import Note # Ensure Note is imported
+        from flask_login import current_user
+        
+        # GET /api/notes: View all notes for the authenticated user
+        if request.method == 'GET':
+            notes = Note.query.filter_by(user_id=current_user.id).all()
+            
+            # Convert notes to a list of dictionaries for JSON response
+            notes_data = []
+            for note in notes:
+                notes_data.append({
+                    'id': note.id,
+                    'title': note.title,
+                    'content': note.content,
+                    'date_posted': note.date_posted.isoformat()
+                })
+            return jsonify(notes_data)
+
+        # POST /api/notes: Create a new note
+        elif request.method == 'POST':
+            # Must have JSON data
+            if not request.is_json:
+                return jsonify({"error": "Missing JSON in request"}), 400
+                
+            data = request.get_json()
+            if not data or 'title' not in data or 'content' not in data:
+                return jsonify({"error": "Missing title or content field"}), 400
+
+            new_note = Note(
+                title=data['title'],
+                content=data['content'],
+                user_id=current_user.id # Links the note to the current user!
+            )
+            db.session.add(new_note)
+            db.session.commit()
+            
+            return jsonify({
+                "message": "Note created successfully", 
+                "id": new_note.id
+            }), 201
+
+    @app.route("/api/notes/<int:note_id>", methods=['PUT', 'DELETE'])
+    @login_required
+    def api_note_detail(note_id):
+        from models import Note
+        from flask_login import current_user
+        
+        note = Note.query.get_or_404(note_id)
+
+        # --- AUTHORIZATION CHECK: MUST BE THE OWNER ---
+        if note.user_id != current_user.id:
+            return jsonify({"error": "Unauthorized access. You do not own this note."}), 403
+        # --- END AUTHORIZATION CHECK ---
+
+        # PUT /api/notes/{id}: Update a note
+        if request.method == 'PUT':
+            if not request.is_json:
+                return jsonify({"error": "Missing JSON in request"}), 400
+                
+            data = request.get_json()
+            
+            if 'title' in data:
+                note.title = data['title']
+            if 'content' in data:
+                note.content = data['content']
+                
+            db.session.commit()
+            
+            return jsonify({"message": f"Note {note_id} updated successfully"})
+
+        # DELETE /api/notes/{id}: Delete a note
+        elif request.method == 'DELETE':
+            db.session.delete(note)
+            db.session.commit()
+            
+            return jsonify({"message": f"Note {note_id} deleted successfully"})
+        
+    # ----------------- Community Posts API Routes ------------------------------------------------
+    @app.route("/api/posts", methods=['GET', 'POST'])
+    def api_posts():
+        from models import Post, User
+        from flask_login import current_user
+        
+        # GET /api/posts: View public feed (NO @login_required needed)
+        if request.method == 'GET':
+            # Retrieve all posts, ordered by most recent first
+            posts = Post.query.order_by(Post.date_posted.desc()).all()
+            
+            posts_data = []
+            for post in posts:
+                # Include author username for the public feed
+                posts_data.append({
+                    'id': post.id,
+                    'title': post.title,
+                    'content': post.content,
+                    'date_posted': post.date_posted.isoformat(),
+                    'user_id': post.user_id,
+                    # Uses the backref 'author' to get the username
+                    'author_username': post.author.username 
+                })
+            return jsonify(posts_data)
+
+        # POST /api/posts: Create a new post (REQUIRES LOGIN)
+        elif request.method == 'POST':
+            if not current_user.is_authenticated:
+                 return jsonify({"error": "Authentication required to create a post."}), 401
+                 
+            if not request.is_json:
+                return jsonify({"error": "Missing JSON in request"}), 400
+                
+            data = request.get_json()
+            if not data or 'title' not in data or 'content' not in data:
+                return jsonify({"error": "Missing title or content field"}), 400
+
+            new_post = Post(
+                title=data['title'],
+                content=data['content'],
+                user_id=current_user.id # Links the post to the current user
+            )
+            db.session.add(new_post)
+            db.session.commit()
+            
+            return jsonify({
+                "message": "Post created successfully", 
+                "id": new_post.id
+            }), 201
+        
+    @app.route("/api/posts/<int:post_id>", methods=['GET', 'PUT', 'DELETE'])
+    @login_required # Login required for all actions here (view single, update, delete)
+    def api_post_detail(post_id):
+        from models import Post
+        from flask_login import current_user
+        
+        post = Post.query.get_or_404(post_id)
+
+        # GET /api/posts/{id}: View single post (requires login to view)
+        if request.method == 'GET':
+            # No ownership check needed, but login is required
+            return jsonify({
+                'id': post.id,
+                'title': post.title,
+                'content': post.content,
+                'date_posted': post.date_posted.isoformat(),
+                'user_id': post.user_id,
+                'author_username': post.author.username
+            })
+        
+        # --- AUTHORIZATION CHECK: MUST BE THE OWNER FOR PUT/DELETE ---
+        if post.user_id != current_user.id:
+            # Return a 403 error if the user is logged in but not the owner
+            return jsonify({"error": "Unauthorized access. You do not own this post."}), 403
+        # --- END AUTHORIZATION CHECK ---
+
+        # PUT /api/posts/{id}: Update a post (Owner Only)
+        if request.method == 'PUT':
+            if not request.is_json:
+                return jsonify({"error": "Missing JSON in request"}), 400
+                
+            data = request.get_json()
+            
+            if 'title' in data:
+                post.title = data['title']
+            if 'content' in data:
+                post.content = data['content']
+                
+            db.session.commit()
+            
+            return jsonify({"message": f"Post {post_id} updated successfully"})
+
+        # DELETE /api/posts/{id}: Delete a post (Owner Only)
+        elif request.method == 'DELETE':
+            db.session.delete(post)
+            db.session.commit()
+            
+            return jsonify({"message": f"Post {post_id} deleted successfully"})
+
     # --------------- Google OAuth Route ----------------------------------------------------------
     @app.route("/logout")
     def logout():
