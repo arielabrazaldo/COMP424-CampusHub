@@ -1,16 +1,32 @@
 # Python virtual environment and cache files
 venv/
+env/
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
 
-# Flask instance folder (contains the local database)
+# Flask instance folder (contains the local database) & debug files
 instance/
+*.log
 
 # Database files
 *.db
 *.sqlite
+site.db
 
 # Local Environment variables
 # CRUCIAL FOR HIDING CLIENT ID AND CLIENT SECRET
 .env 
+
+# OAuth or credentials
+*.pem
+*.key
+*.crt
+
+# VSCode settings
+.vscode/
+
+# macOS + Windows system files
+.DS_Store
+Thumbs.db
