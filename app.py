@@ -68,6 +68,16 @@ def create_app():
     # Initialize LoginManager with the app
     login_manager.init_app(app)
 
+    # configure the view function that handles logins
+    login_manager.login_view = 'login'
+    login_manager.login_message_category = 'info'
+
+    @login_manager.unauthorized_handler
+    def unauthorized():
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "Unauthorized"}), 401
+        return redirect(url_for("login"))
+
     # Initialize OAuth with the app
     oauth.init_app(app)
 
