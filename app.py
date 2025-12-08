@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from flask import Flask, render_template, url_for, flash, redirect, jsonify, request
+from flask import Flask, render_template, url_for, flash, redirect, jsonify, request, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from flask_login import LoginManager, logout_user, login_required
@@ -48,7 +48,8 @@ def create_app():
     app.config['SESSION_COOKIE_HTTPONLY'] = True
 
     # Secure (Only sent over HTTPS)
-    app.config['SESSION_COOKIE_SECURE'] = True
+    # toggle "True" to disable cookies, session and CSRF tokens on HTTP
+    app.config['SESSION_COOKIE_SECURE'] = False
 
     # SameSite=Lax (Protects against CSRF)
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
@@ -148,6 +149,11 @@ def create_app():
                 flash('Login Unsuccessful. Please check email and password.', 'danger')
         return render_template('login.html', title='Login', form=form)
     
+    @app.route("/notes")
+    @login_required
+    def notes_page():
+        return render_template("notes.html")
+
     # --------------------- Notes API Routes -------------------------------------------------------
     @app.route("/api/notes", methods=['GET', 'POST'])
     @login_required
@@ -229,112 +235,17 @@ def create_app():
             
             return jsonify({"message": f"Note {note_id} deleted successfully"})
         
-    # ----------------- Community Posts API Routes ------------------------------------------------
-    @app.route("/api/posts", methods=['GET', 'POST'])
-    def api_posts():
-        from models import Post, User
-        from flask_login import current_user
-        
-        # GET /api/posts: View public feed (NO @login_required needed)
-        if request.method == 'GET':
-            # Retrieve all posts, ordered by most recent first
-            posts = Post.query.order_by(Post.date_posted.desc()).all()
-            
-            posts_data = []
-            for post in posts:
-                # Include author username for the public feed
-                posts_data.append({
-                    'id': post.id,
-                    'title': post.title,
-                    'content': post.content,
-                    'date_posted': post.date_posted.isoformat(),
-                    'user_id': post.user_id,
-                    # Uses the backref 'author' to get the username
-                    'author_username': post.author.username 
-                })
-            return jsonify(posts_data)
-
-        # POST /api/posts: Create a new post (REQUIRES LOGIN)
-        elif request.method == 'POST':
-            if not current_user.is_authenticated:
-                 return jsonify({"error": "Authentication required to create a post."}), 401
-                 
-            if not request.is_json:
-                return jsonify({"error": "Missing JSON in request"}), 400
-                
-            data = request.get_json()
-            if not data or 'title' not in data or 'content' not in data:
-                return jsonify({"error": "Missing title or content field"}), 400
-
-            new_post = Post(
-                title=data['title'],
-                content=data['content'],
-                user_id=current_user.id # Links the post to the current user
-            )
-            db.session.add(new_post)
-            db.session.commit()
-            
-            return jsonify({
-                "message": "Post created successfully", 
-                "id": new_post.id
-            }), 201
-        
-    @app.route("/api/posts/<int:post_id>", methods=['GET', 'PUT', 'DELETE'])
-    @login_required # Login required for all actions here (view single, update, delete)
-    def api_post_detail(post_id):
-        from models import Post
-        from flask_login import current_user
-        
-        post = Post.query.get_or_404(post_id)
-
-        # GET /api/posts/{id}: View single post (requires login to view)
-        if request.method == 'GET':
-            # No ownership check needed, but login is required
-            return jsonify({
-                'id': post.id,
-                'title': post.title,
-                'content': post.content,
-                'date_posted': post.date_posted.isoformat(),
-                'user_id': post.user_id,
-                'author_username': post.author.username
-            })
-        
-        # --- AUTHORIZATION CHECK: MUST BE THE OWNER FOR PUT/DELETE ---
-        if post.user_id != current_user.id:
-            # Return a 403 error if the user is logged in but not the owner
-            return jsonify({"error": "Unauthorized access. You do not own this post."}), 403
-        # --- END AUTHORIZATION CHECK ---
-
-        # PUT /api/posts/{id}: Update a post (Owner Only)
-        if request.method == 'PUT':
-            if not request.is_json:
-                return jsonify({"error": "Missing JSON in request"}), 400
-                
-            data = request.get_json()
-            
-            if 'title' in data:
-                post.title = data['title']
-            if 'content' in data:
-                post.content = data['content']
-                
-            db.session.commit()
-            
-            return jsonify({"message": f"Post {post_id} updated successfully"})
-
-        # DELETE /api/posts/{id}: Delete a post (Owner Only)
-        elif request.method == 'DELETE':
-            db.session.delete(post)
-            db.session.commit()
-            
-            return jsonify({"message": f"Post {post_id} deleted successfully"})
 
     # --------------- Google OAuth Route ----------------------------------------------------------
     @app.route("/logout")
     def logout():
         # Clears the session cookie, effectively logging the user out
         logout_user() 
+        session.clear()
+        response = redirect(url_for('hello_world'))
+        response.delete_cookie(app.config['SESSION_COOKIE_NAME'])
         flash("You have been logged out.", 'info')
-        return redirect(url_for('hello_world'))
+        return response
     
     @app.route("/timeout_logout")
     @login_required
@@ -386,6 +297,42 @@ def create_app():
         flash(f'Successfully logged in with Google as {user.username}!', 'success')
         return redirect(url_for('hello_world'))
         # -------------------------------------------------------------------------------------------
+
+    # ---------------------- CSRF Token Route ---------------------------------------
+    @app.route("/csrf", methods=["GET"])
+    @login_required
+    def get_csrf_token():
+        """
+        Issues a CSRF token tied to the current session.
+
+        Frontend should call GET /csrf after login and then send this token
+        in the 'x-csrf-token' header for all POST/PUT/DELETE requests to /api/*.
+        """
+        token = session.get("csrf_token")
+        if not token:
+            token = token_urlsafe(32)
+            session["csrf_token"] = token
+
+        return jsonify({"csrf_token": token})
+    
+    # ---------------------- CSRF Protection for API Writes ------------------------
+    @app.before_request
+    def csrf_protect_api():
+        """
+        Enforce CSRF token on all modifying API requests.
+
+        - Only applies to POST/PUT/DELETE
+        - Only for routes under /api/
+        - Token must be sent in 'x-csrf-token' header
+        - Token must match the one stored in the session by /csrf
+        """
+        if request.method in ("POST", "PUT", "DELETE"):
+            if request.path.startswith("/api/"):
+                header_token = request.headers.get("x-csrf-token")
+                session_token = session.get("csrf_token")
+
+                if not session_token or not header_token or header_token != session_token:
+                    return jsonify({"error": "Invalid CSRF token"}), 403
 
     return app
 

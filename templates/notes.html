@@ -1,0 +1,109 @@
+{% extends "index.html" %}
+{% block content %}
+
+<h1>Your Notes</h1>
+
+<!-- Create Note Form -->
+<div>
+    <h3>Create a New Note</h3>
+    <input id="newTitle" placeholder="Title">
+    <br><br>
+    <textarea id="newContent" placeholder="Content"></textarea>
+    <br><br>
+    <button onclick="createNote()">Create Note</button>
+</div>
+
+<hr>
+
+<!-- Notes List -->
+<div id="notesList">
+    <h3>Your Notes</h3>
+    <p>Loading...</p>
+</div>
+
+<script>
+let csrfToken = null;
+
+// Fetch CSRF token after page loads
+async function loadCSRF() {
+    const res = await fetch("/csrf")
+    const data = await res.json();
+    csrfToken = data.csrf_token;
+}
+
+// Load all notes
+async function loadNotes() {
+    const res = await fetch('/api/notes');
+    const notes = await res.json();
+
+    const container = document.getElementById('notesList');
+    container.innerHTML = '';
+
+    notes.forEach(note => {
+        container.innerHTML += `
+            <div style="margin-bottom:20px;">
+                <h4>${note.title}</h4>
+                <p>${note.content}</p>
+                <button onclick="editNote(${note.id})">Edit</button>
+                <button onclick="deleteNote(${note.id})">Delete</button>
+            </div>
+        `;
+    });
+}
+
+// Create a note & send CSRF header
+async function createNote() {
+    const title = document.getElementById('newTitle').value;
+    const content = document.getElementById('newContent').value;
+
+    await fetch('/api/notes', {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "x-csrf-token": csrfToken
+        },
+        body: JSON.stringify({ title, content })
+    });
+
+    loadNotes();
+}
+
+// Edit a note using prompt dialogs (simple UI)
+async function editNote(id) {
+    const newTitle = prompt("Enter new title:");
+    const newContent = prompt("Enter new content:");
+
+    await fetch(`/api/notes/${id}`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+            "x-csrf-token": csrfToken
+        },
+        body: JSON.stringify({ title: newTitle, content: newContent })
+    });
+
+    loadNotes();
+}
+
+// Delete a note
+async function deleteNote(id) {
+    await fetch(`/api/notes/${id}`, {
+        method: "DELETE",
+        headers: {
+            "x-csrf-token": csrfToken
+        }
+    });
+
+    loadNotes();
+}
+
+// Load CSRF first and then load notes
+async function start() {
+    await loadCSRF();
+    loadNotes();
+}
+
+start();
+</script>
+
+{% endblock %}
